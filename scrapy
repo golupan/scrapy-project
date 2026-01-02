@@ -1,0 +1,62 @@
+import scrapy
+from scrapy.crawler import CrawlerRunner
+import asyncio
+import nest_asyncio
+from twisted.internet import defer
+
+# Apply nest_asyncio to allow the Twisted reactor to run in an already running event loop (like in Colab).
+nest_asyncio.apply()
+
+# List to store scraped data
+data = []
+
+class QuotesSpider(scrapy.Spider):
+    name = "quotes"
+    start_urls = ["https://quotes.toscrape.com/"]
+
+    def parse(self, response):
+        for quote in response.css("div.quote"):
+            text = quote.css("span.text::text").get()
+            author = quote.css("small.author::text").get()
+
+            # Clean and append data to the global list
+            data.append({
+                "Quote": text.strip() if text else "",
+                "Author": author.strip() if author else ""
+            })
+
+        next_page = response.css("li.next a::attr(href)").get()
+        if next_page:
+            yield response.follow(next_page, self.parse)
+
+# Clear the data list at the beginning of each run to avoid accumulating data from previous executions.
+data.clear()
+
+# Initialize CrawlerRunner. LOG_LEVEL is set to 'ERROR' to suppress excessive output.
+runner = CrawlerRunner(settings={
+    "LOG_LEVEL": "ERROR"
+})
+
+# Helper function to convert a Twisted Deferred to an asyncio Future
+def deferred_to_future(d: defer.Deferred) -> asyncio.Future:
+    f = asyncio.Future()
+    d.addCallbacks(f.set_result, f.set_exception)
+    return f
+
+# Define an asynchronous function to run the spider.
+async def run_spider():
+    # 'crawl' returns a Deferred. We convert it to an asyncio.Future to ensure it's awaitable.
+    crawl_deferred = runner.crawl(QuotesSpider)
+    await deferred_to_future(crawl_deferred)
+    # We also need to await runner.join() to ensure all crawls complete gracefully.
+    await runner.join()
+
+# Run the asynchronous spider.
+# asyncio.run() will manage the event loop, running the crawl and then stopping gracefully.
+# With nest_asyncio applied, asyncio.run() can be called even if an event loop is already running.
+asyncio.run(run_spider())
+
+print(f"Scraped {len(data)} quotes.")
+# You can now convert the data list to a DataFrame or perform other operations
+import pandas as pd
+df = pd.DataFrame(data)
