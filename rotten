@@ -1,0 +1,47 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+
+options = webdriver.ChromeOptions()
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+driver.get("https://www.rottentomatoes.com/browse/tv_series_browse/sort:popular")
+
+data = []
+try: 
+    cookie_button = WebDriverWait(driver, 5).until( EC.element_to_be_clickable((By.XPATH, '//button[contains(text(),"Continue")]')) ) 
+    cookie_button.click() 
+    print("Cookies accepted.") 
+except: 
+    print("No cookie banner found.")
+
+page_count = 0 
+max_page = 2
+
+while page_count < max_page: 
+    # Wait for tiles to load 
+    results = WebDriverWait(driver, 5).until( EC.presence_of_all_elements_located((By.XPATH, '//tile-dynamic/a')) )
+    
+    # Extract titles and dates
+    for result in results:
+        try:
+            title = result.find_element(By.XPATH, ".//span[1]").text
+            date = result.find_element(By.XPATH, ".//span[2]").text
+            data.append({"title": title, "date": date})
+        except:
+            continue
+
+    try: 
+        #load_button = WebDriverWait(driver, 3).until( EC.element_to_be_clickable((By.ID, "load_more")) )
+        load_button = WebDriverWait(driver, 2).until( EC.element_to_be_clickable((By.XPATH, '//*[@id="main-page-content"]/div[1]/div[4]/button')) ) 
+        driver.execute_script("arguments[0].click();", load_button) 
+        time.sleep(2) 
+        page_count+=1
+        # wait for new content to load 
+    except: 
+        print("No more pages to load.") 
+        break 
+print(f"Scraped {len(data)} items")
